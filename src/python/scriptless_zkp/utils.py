@@ -15,6 +15,7 @@
 """Provides various helper functions, including several for random number and random prime generation."""
 
 import secrets
+
 from collections import defaultdict
 
 
@@ -86,3 +87,25 @@ def bytes_to_integer(data: bytes, byte_order: str = "big-endian") -> int:
     """
     # Convert & return the byte array to an integer value using the specified byte-order.
     return int.from_bytes(data, byteorder="big" if byte_order == "big-endian" else "little")
+
+
+def dict_with_missing_factory(default_factory: callable) -> defaultdict:
+    """
+    Constructs a dictionary with a missing key handler, which uses the provided default factory for missing keys.
+    :param default_factory: The default factory to use for missing keys.
+    :return: A dictionary with a missing key handler, that uses the provided default factory for constructing values
+             for missing keys.
+    """
+    return defaultdict(default_factory)
+
+
+def dict_with_missing_by_key_factory(default_factory: callable) -> dict:
+    """
+    Constructs a dictionary with a custom missing key handler, which can use the missing key in construction of a
+    value for the missing key.
+    :param default_factory: The default factory to use for missing keys, which accepts the missing key as an argument.
+    :return: A dictionary with a custom missing key handler, which can use the missing key in construction of a value.
+    """
+    return type("DictWithMissingKeyFactory", (dict,), {
+        "__missing__": default_factory
+    })()
