@@ -744,6 +744,13 @@ class PaillierKeyPair:
         # aren't "too close together" (i.e., `|p - q| >= nroot(n, 4)`), and their product: `n = p * q`.
         p, q, n = cls._generate_primes(prime_factor_size_bits)
 
+        # Compute the public modulus: `n = p * q`
+        n = p * q
+
+        # Compute an optimized variant of the private key: phi(n) = (p-1)(q-1) for primes p, q, where phi(n) is Euler's
+        # totient function of n.
+        private_lambda: int = (p - 1) * (q - 1)  # phi(n) = (p-1)(q-1) for primes p, q
+
         # Choose `g = n + 1`, a known generator `g ∈ B` of the set of n-th residues modulo n^2, where `B` := the set of
         # elements of Z_{n^2}^* with order `n * 𝜶`, for 𝜶 ∈ [1, λ(n)].
         g = n + 1
