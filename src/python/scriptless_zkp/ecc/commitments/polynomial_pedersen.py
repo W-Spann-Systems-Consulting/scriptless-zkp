@@ -31,8 +31,11 @@ polynomial itself).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import reduce
 
 import galois
+
+from Cryptodome.PublicKey import ECC
 
 from galois import Array
 
@@ -50,6 +53,64 @@ class SealedPolynomialPedersenCommitment:
     @property
     def degree(self) -> int:
         return len(self.coefficient_commitments) - 1
+
+    def verify_integrity(self) -> bool:
+        """
+        Verifies that all coefficient commitments are valid points on the elliptic curve defined in the Pedersen
+        commitment context.
+        :return: True if all coefficient commitments are valid points on the curve; False otherwise.
+        """
+        return all(
+            self.coefficient_commitments[i].curve_config.is_point_on_curve(
+                self.coefficient_commitments[i].commitment_point
+            )
+            for i in range(len(self.coefficient_commitments))
+        )
+
+    def verify_evaluation_proof(self, x: int, y: int, proof: int) -> bool:
+        """
+        Verifies a non-interactive zero-knowledge (NIZK) proof that the committed polynomial evaluates to `y` at the
+        given `x` value, without revealing any information about the polynomial itself.
+
+        This verification checks that the following equation holds (i.e., the elliptic curve points produced by the
+        left & right sides are equal), using the coefficient commitments `[C_i]_d` from this
+        `SealedPolynomialPedersenCommitment`:
+
+            `y*G + 𝜋*B == C_0 + C_1*x + C_2*x^2 + ... + C_d*x^d`,
+
+        where `C_i` are the coefficient commitments, `G` is the Pedersen commitment base point (common generator),
+        `B` is the Pedersen commitment NUMS generator, `p` is the field characteristic, and `d` is the degree of the
+        polynomial.
+
+        :param x: the `x` value at which the committed polynomial was evaluated by the prover, which must be in the
+                  range `[0, p)` where `p` is the field characteristic, as provided to the prover by the verifier.
+        :param y: the result of evaluating the committed polynomial at the given `x` value, as provided by the prover.
+        :param proof: the NIZK proof that the committed polynomial evaluates to `y` at `x`, as provided by the prover.
+        :return: True if the proof is valid (i.e., the proof verification equation holds); False otherwise.
+        :raises ValueError: if the provided `x` or `y` values are out of range for the field `F_p` (i.e., not in the
+                            range `[0, p)` where `p` is the field characteristic).
+        """
+        if not (0 <= x < self.field.characteristic):
+            raise ValueError(f"Evaluation point x is out of range for the field F_{self.field.characteristic}.")
+        if not (0 <= y < self.field.characteristic):
+            raise ValueError(f"Evaluation result y is out of range for the field F_{self.field.characteristic}.")
+
+        G: ECC.EccPoint = self.coefficient_commitments[0].curve_config.base_point
+        B: ECC.EccPoint = self.coefficient_commitments[0].nums_generator
+
+        # Left side: y*G + 𝜋*B
+        left_side: ECC.EccPoint = G * y + B * proof
+
+        # Right side: C_0 + C_1*x + C_2*x^2 + ... + C_d*x^d
+        right_side: ECC.EccPoint = reduce(
+            lambda accum, pt:
+                accum + pt,  # elliptic curve point addition
+            [self.coefficient_commitments[i].commitment_point * pow(x, i, self.field.characteristic)
+             for i in range(len(self.coefficient_commitments))],
+            self.coefficient_commitments[0].curve_config.identity  # identity: O (point-at-infinity)
+        )
+
+        return left_side == right_side
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,9 +202,9 @@ class PolynomialPedersenContext:
         5. The verifier checks that the proof is valid by verifying that the following equation holds
         (i.e., the elliptic curve points produced by the left & right sides are equal), using the coefficient
         commitments from the `SealedPolynomialPedersenCommitment`, provided to the verifier by the prover earlier:
-            `y*G + proof*H == C_0 + C_1*x + C_2*x^2 + ... + C_d*x^d (mod p)`,
+            `y*G + 𝜋*B == C_0 + C_1*x + C_2*x^2 + ... + C_d*x^d`,
         where `C_i` are the coefficient commitments, `G` is the Pedersen commitment base point (common generator), and
-        `H` is the Pedersen commitment NUMS generator, `p` is the field characteristic, and `d` is the degree of the
+        `B` is the Pedersen commitment NUMS generator, `p` is the field characteristic, and `d` is the degree of the
         polynomial.
 
         :param revealed_commitment: the revealed polynomial commitment to the secret polynomial's coefficients, which
