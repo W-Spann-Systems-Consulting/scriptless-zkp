@@ -40,6 +40,10 @@ all liability or warrantability related to its use.
   - **Pedersen Commitments** (over Elliptic Curves) [`scriptless_zkp.ecc.commitments.pedersen`]
   - **Vector Pedersen Commitments** (over Elliptic Curves) [`scriptless_zkp.ecc.commitments.vector_pedersen`]
     - Support for vector commitments, which enable committing to multiple values in a single commitment.
+  - **Polynomial Pedersen Commitments** (over Elliptic Curves) [`scriptless_zkp.ecc.commitments.polynomial_pedersen`]
+    - Support for committing to an `n`'th-degree polynomial `y(x) = a_n*x^n + a_n-1*x^n-1 + ... + a_1*x + a_0` and
+    proving properties about it in zero-knowledge, such as evaluation at an `x` value: `y(u)`
+ 
 
 #### Cryptographic Commitments [[scriptless_zkp.commitments](https://github.com/qubits4all/scriptless-zkp/tree/develop/src/python/scriptless_zkp/commitments)]
   - **HMAC-based & Blake2b-based Keyed-Hash Commitments** [`scriptless_zkp.commitments.hmac_commitments`]
@@ -62,41 +66,41 @@ all liability or warrantability related to its use.
 
 ### Planned Future Work:
 
-#### Cryptographic Commitments (ECC)
-- ~~Pedersen Commitments (over Elliptic Curves)~~
-- ~~Vector Pedersen Commitments** (over Elliptic Curves)~~
-- Polynomial Pedersen Commitments (over Elliptic Curves)
-  - Support for committing to an `n`'th-degree polynomial `y(x) = a_n*x^n + a_n-1*x^n-1 + ... + a_1*x + a_0` and
-  proving properties about it in zero-knowledge, such as evaluation at a value: `y(u)`
+#### ~~Cryptographic Commitments (ECC)~~
+  - ~~Pedersen Commitments (over Elliptic Curves)~~
+  - ~~Vector Pedersen Commitments** (over Elliptic Curves)~~
+  - ~~Polynomial Pedersen Commitments (over Elliptic Curves)~~
+    - Support for committing to an `n`'th-degree polynomial `y(x) = a_n*x^n + a_n-1*x^n-1 + ... + a_1*x + a_0` and
+    proving properties about it in zero-knowledge, such as evaluation at a value: `y(u)`
 
 #### Adaptor Signatures - ECC Schnorr
-- ~~Adaptor Signatures for ECC Schnorr (single-party)~~
-- **Two-Party Adaptor Signatures for ECC Schnorr**
+  - ~~Adaptor Signatures for ECC Schnorr (single-party)~~
+  - **Two-Party Adaptor Signatures for ECC Schnorr**
 
 #### BIP-340 Compatible ECC Schnorr Signatures
-- Support **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) (Bitcoin standard) compatible ECC Schnorr Signatures**
-    - Using the `secp256k1` elliptic curve used by the Bitcoin & Ethereum blockchains, and incorporating specific Bitcoin
-    BIP-340 standard domain separation tags into the various cryptographic hash operations.
-- Support **BIP-340 compatible Two-Party ECC Schnorr Signatures**
+  - Support **[BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) (Bitcoin standard) compatible ECC Schnorr Signatures**
+      - Using the `secp256k1` elliptic curve used by the Bitcoin & Ethereum blockchains, and incorporating specific Bitcoin
+      BIP-340 standard domain separation tags into the various cryptographic hash operations.
+  - Support **BIP-340 compatible Two-Party ECC Schnorr Signatures**
 
 #### Adaptor Signatures - ECDSA
-- Prerequisites:
-  - ~~**Paillier** (Additively) **Homomorphic Encryption**~~
-  - **Zero-Knowledge Range Proofs** (based on Y. Lindell's [Paillier-based ZKP protocol](https://eprint.iacr.org/2017/552.pdf) (see: Appendix A))
-- **Two-Party ECDSA Signatures** (based on [Y. Lindell's protocol](https://eprint.iacr.org/2017/552.pdf))
-- **Two-Party Adaptor Signatures for ECDSA**
+  - Prerequisites:
+    - ~~**Paillier** (Additively) **Homomorphic Encryption**~~
+    - **Zero-Knowledge Range Proofs** (based on Y. Lindell's [Paillier-based ZKP protocol](https://eprint.iacr.org/2017/552.pdf) (see: Appendix A))
+  - **Two-Party ECDSA Signatures** (based on [Y. Lindell's protocol](https://eprint.iacr.org/2017/552.pdf))
+  - **Two-Party Adaptor Signatures for ECDSA**
 
 #### Two-Party Digital Signatures & Non-Interactive Zero-Knowledge (NIZK) Proofs
-- Revise Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules:
-  - To support additional prime-order elliptic curves:
-    - NIST P-384 (`secp384r1`)
-    - NIST P-521 (`secp521r1`)
+  - Revise Two-Party ECC Schnorr and NIZK PoKs of Discrete Log modules:
+    - To support additional prime-order elliptic curves:
+      - NIST P-384 (`secp384r1`)
+      - NIST P-521 (`secp521r1`)
 
 #### Blockchain-Agnostic Protocols
-- Prerequisites:
-  - **Verifiable Delay Functions** (VDFs) and **Verifiable Timed Discrete Logs** (VTDs)
-- **Universal Atomic Swaps** (UAS) protocol (based on [S.A. Thyagarajan, et al](https://eprint.iacr.org/2021/1612))
+  - Prerequisites:
+    - **Verifiable Delay Functions** (VDFs) and **Verifiable Timed Discrete Logs** (VTDs)
+  - **Universal Atomic Swaps** (UAS) protocol (based on [S.A. Thyagarajan, et al](https://eprint.iacr.org/2021/1612))
 
 #### Secure Multi-Party Computation (MCP) protocols
-- **Oblivious Transfer** (OT)
-- **Private Information Retrieval** (PIR)
+  - **Oblivious Transfer** (OT)
+  - **Private Information Retrieval** (PIR)
