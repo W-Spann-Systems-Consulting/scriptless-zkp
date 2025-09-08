@@ -32,12 +32,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import reduce
+from typing import cast
 
 import galois
 
 from Cryptodome.PublicKey import ECC
 
-from galois import Array
+from galois import FieldArray
 
 from scriptless_zkp.ecc.commitments.pedersen import (
     SealedPedersenCommitment, RevealedPedersenCommitment, PedersenCommitmentContext
@@ -48,11 +49,19 @@ from scriptless_zkp.ecc.weierstrass_curves import WeierstrassEllipticCurveConfig
 @dataclass(frozen=True, slots=True)
 class SealedPolynomialPedersenCommitment:
     coefficient_commitments: list[SealedPedersenCommitment]
-    field: type[Array]
+    field: type[FieldArray]
 
     @property
     def degree(self) -> int:
         return len(self.coefficient_commitments) - 1
+
+    @property
+    def curve_config(self) -> WeierstrassEllipticCurveConfig:
+        return self.coefficient_commitments[0].curve_config
+
+    @property
+    def nums_generator(self) -> ECC.EccPoint:
+        return self.coefficient_commitments[0].nums_generator
 
     def verify_integrity(self) -> bool:
         """
@@ -61,7 +70,7 @@ class SealedPolynomialPedersenCommitment:
         :return: True if all coefficient commitments are valid points on the curve; False otherwise.
         """
         return all(
-            self.coefficient_commitments[i].curve_config.is_point_on_curve(
+            self.curve_config.is_point_on_curve(
                 self.coefficient_commitments[i].commitment_point
             )
             for i in range(len(self.coefficient_commitments))
@@ -95,8 +104,8 @@ class SealedPolynomialPedersenCommitment:
         if not (0 <= y < self.field.characteristic):
             raise ValueError(f"Evaluation result y is out of range for the field F_{self.field.characteristic}.")
 
-        G: ECC.EccPoint = self.coefficient_commitments[0].curve_config.base_point
-        B: ECC.EccPoint = self.coefficient_commitments[0].nums_generator
+        G: ECC.EccPoint = self.curve_config.base_point
+        B: ECC.EccPoint = self.nums_generator
 
         # Left side: y*G + 𝜋*B
         left_side: ECC.EccPoint = G * y + B * proof
@@ -107,7 +116,7 @@ class SealedPolynomialPedersenCommitment:
                 accum + pt,  # elliptic curve point addition
             [self.coefficient_commitments[i].commitment_point * pow(x, i, self.field.characteristic)
              for i in range(len(self.coefficient_commitments))],
-            self.coefficient_commitments[0].curve_config.identity  # identity: O (point-at-infinity)
+            self.curve_config.identity  # start point additions w/ curve's identity element: O (i.e., point-at-infinity)
         )
 
         return left_side == right_side
@@ -128,14 +137,22 @@ class RevealedPolynomialPedersenCommitment:
         return self.committed_polynomial.degree
 
     @property
-    def field(self) -> type[Array]:
-        return self.committed_polynomial.field
+    def field(self) -> type[FieldArray]:
+        return cast(type[FieldArray], self.committed_polynomial.field)
+
+    @property
+    def curve_config(self) -> WeierstrassEllipticCurveConfig:
+        return self.coefficient_commitments[0].curve_config
+
+    @property
+    def nums_generator(self) -> ECC.EccPoint:
+        return self.coefficient_commitments[0].nums_generator
 
 
 class PolynomialPedersenContext:
-    def __init__(self, field: type[Array], pedersen_context: PedersenCommitmentContext):
+    def __init__(self, field: type[FieldArray], pedersen_context: PedersenCommitmentContext):
         if not galois.is_prime(field.characteristic):
-            raise ValueError("Field must be a prime field (i.e., F_p where p is prime).")
+            raise ValueError("Field must be a field with prime characteristic (e.g., F_p where p is prime, or F_p^m).")
 
         self.field = field
         self.pedersen_context = pedersen_context
@@ -148,6 +165,13 @@ class PolynomialPedersenContext:
             self,
             polynomial: galois.Poly
     ) -> tuple[SealedPolynomialPedersenCommitment, RevealedPolynomialPedersenCommitment]:
+        if polynomial.field is not self.field:
+            raise ValueError("Polynomial must be defined over the same field as the Polynomial Pedersen context.")
+        elif polynomial.degree >= self.field.characteristic:
+            raise ValueError(
+                f"Polynomial degree must be less than the field characteristic 'p': {self.field.characteristic}"
+            )
+
         coefficient_commitments: list[SealedPedersenCommitment] = []
         revealed_coefficient_commitments: list[RevealedPedersenCommitment] = []
 
