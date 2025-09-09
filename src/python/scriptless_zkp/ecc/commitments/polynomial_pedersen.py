@@ -253,7 +253,9 @@ class PolynomialPedersenContext:
         coefficient_commitments: list[SealedPedersenCommitment] = []
         revealed_coefficient_commitments: list[RevealedPedersenCommitment] = []
 
-        for coeff, i in enumerate(polynomial.coeffs):
+        # Enumerate the polynomial coefficients in ascending order (i.e., from the constant term to the highest-degree
+        # term), committing to each coefficient individually using the underlying Pedersen commitment context.
+        for i, coeff in enumerate(reversed(polynomial.coeffs)):
             coeff_int: int = int(coeff)
             if not (0 <= coeff_int < self.field.characteristic):
                 raise ValueError(
