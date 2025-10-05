@@ -306,6 +306,41 @@ class SealedPedersenCommitment:
         Multiplies this sealed Pedersen commitment by a scalar multiplier, returning a new sealed commitment that is a
         commitment to the product of the committed value and the multiplier (up to a blinding factor, equal to the
         original commitment's blinding factor multiplied by the multiplier).
+
+        This left-multiply operator is provided for convenience, to allow the use of the `*` operator to perform
+        homomorphic scalar multiplication of revealed Pedersen commitments, where the scalar multiplier is placed on
+        the right (e.g., `C(x) * k`).
+
+        This left-multiply operation is commutative with respect to the scalar multiplier, so `C(x) * k == k * C(x)`,
+        where the right-multiply operator is used on the right-hand size of this equation (see: `__rmul__` method).
+
+        :param multiplier: the scalar multiplier to multiply the commitment by.
+        :return: a new sealed Pedersen commitment that is a commitment to the product of the committed value and the
+                 multiplier, which must lie in the range `[0, curve_order - 1]`.
+        :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
+        :raises InvalidECCPedersenCommitmentPointException: if the multiplication results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic scalar product and the underlying
+                commitment should be recalculated, using a new NUMS generator point `H`.
+        :raises InvalidECCPointException: if the multiplication results in an invalid commitment point that is not on
+                this commitment's elliptic curve. This may indicate that the commitments being multiplied may not in
+                fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
+                calculated.
+        """
+        return self.multiply(multiplier)
+
+    def __rmul__(self, multiplier: int) -> SealedPedersenCommitment:
+        """
+        Multiplies this sealed Pedersen commitment by a scalar multiplier, returning a new sealed commitment that is a
+        commitment to the product of the committed value and the multiplier (up to a blinding factor, equal to the
+        original commitment's blinding factor multiplied by the multiplier).
+
+        This right-multiply operator is provided for convenience, to allow the use of the `*` operator to perform
+        homomorphic scalar multiplication of revealed Pedersen commitments, where the scalar multiplier is placed on
+        the left (e.g., `k * C(x)`).
+
+        This right-multiply operation is commutative with respect to the scalar multiplier, so `k * C(x) == C(x) * k`,
+        where the left-multiply operator is used on the right-hand size of this equation (see: `__mul__` method).
+
         :param multiplier: the scalar multiplier to multiply the commitment by.
         :return: a new sealed Pedersen commitment that is a commitment to the product of the committed value and the
                  multiplier, which must lie in the range `[0, curve_order - 1]`.
@@ -596,13 +631,21 @@ class RevealedPedersenCommitment:
 
         return result
 
-    def __mul__(self, other) -> RevealedPedersenCommitment:
+    def __mul__(self, multiplier: int) -> RevealedPedersenCommitment:
         """
         Multiplies this revealed Pedersen commitment by a scalar multiplier, returning a new revealed commitment that
         is a commitment to the product of the committed value and the multiplier, up to a blinding factor (equal to the
         original commitment's blinding factor multiplied by the multiplier, unless the multiplier is zero, in which case
         a new random blinding factor is used instead).
-        :param other: the scalar multiplier to multiply the commitment by.
+
+        This left-multiply operator is provided for convenience, to allow the use of the `*` operator to perform
+        homomorphic scalar multiplication of revealed Pedersen commitments, where the scalar multiplier is placed on
+        the right (e.g., `C(x) * k`).
+
+        This left-multiply operation is commutative with respect to the scalar multiplier, so `C(x) * k == k * C(x)`,
+        where the right-multiply operator is used on the right-hand size of this equation (see: `__rmul__` method).
+
+        :param multiplier: the scalar multiplier to multiply the commitment by.
         :return: a new revealed Pedersen commitment that is a commitment to the product of the committed value and the
                  multiplier, which must lie in the range `[0, curve_order - 1]`.
         :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
@@ -614,7 +657,35 @@ class RevealedPedersenCommitment:
                 fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
                 calculated.
         """
-        return self.multiply(other)
+        return self.multiply(multiplier)
+
+    def __rmul__(self, multiplier: int) -> RevealedPedersenCommitment:
+        """
+        Multiplies this revealed Pedersen commitment by a scalar multiplier, returning a new revealed commitment that
+        is a commitment to the product of the committed value and the multiplier, up to a blinding factor (equal to the
+        original commitment's blinding factor multiplied by the multiplier, unless the multiplier is zero, in which case
+        a new random blinding factor is used instead).
+
+        This right-multiply operator is provided for convenience, to allow the use of the `*` operator to perform
+        homomorphic scalar multiplication of revealed Pedersen commitments, where the scalar multiplier is placed on
+        the left (e.g., `k * C(x)`).
+
+        This right-multiply operation is commutative with respect to the scalar multiplier, so `k * C(x) == C(x) * k`,
+        where the left-multiply operator is used on the right-hand size of this equation (see: `__mul__` method).
+
+        :param multiplier: the scalar multiplier to multiply the commitment by.
+        :return: a new revealed Pedersen commitment that is a commitment to the product of the committed value and the
+                 multiplier, which must lie in the range `[0, curve_order - 1]`.
+        :raises ValueError: if the multiplier is not in the range `[0, curve_order - 1]`.
+        :raises InvalidECCPedersenCommitmentPointException: if the multiplication results in an invalid commitment
+                point (i.e., the point-at-infinity). In this case, the homomorphic scalar product and the underlying
+                commitment should be recalculated, using a new NUMS generator point `H`.
+        :raises InvalidECCPointException: if the multiplication results in an invalid commitment point that is not on
+                this commitment's elliptic curve. This may indicate that the commitments being multiplied may not in
+                fact have been calculated using the same elliptic curve, or that they were otherwise incorrectly
+                calculated.
+        """
+        return self.multiply(multiplier)
 
     def multiply(self, multiplier: int) -> RevealedPedersenCommitment:
         """
@@ -679,7 +750,6 @@ class RevealedPedersenCommitment:
 
         # If the multiplier is zero, we use a new random blinding factor.
         if multiplier == 0:
-            # blinding_factor: int = ecc_utils.generate_random_nonce(self.curve_config, exclude_one=True)
             return RevealedPedersenCommitment(
                 self.curve_config,
                 self.nums_generator,
@@ -687,15 +757,15 @@ class RevealedPedersenCommitment:
                 0,               # Committed scalar product is zero.
                 blinding_factor  # new random blinding factor
             )
-
-        # Return a new revealed Pedersen commitment with the product commitment point.
-        return RevealedPedersenCommitment(
-            self.curve_config,
-            self.nums_generator,
-            commitment_product_point,
-            (self.committed * multiplier) % self.curve_config.order,
-            (self.blinding_factor * multiplier) % self.curve_config.order
-        )
+        else:
+            # Return a new revealed Pedersen commitment with the product commitment point.
+            return RevealedPedersenCommitment(
+                self.curve_config,
+                self.nums_generator,
+                commitment_product_point,
+                (self.committed * multiplier) % self.curve_config.order,
+                (self.blinding_factor * multiplier) % self.curve_config.order
+            )
 
     def verify(self) -> bool:
         # Check for invalid blinding factor (must be in the range: [1, curve_order - 1] ).
