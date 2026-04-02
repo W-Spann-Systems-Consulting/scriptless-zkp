@@ -598,7 +598,7 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
             self,
             responder_unhardened_key_share: ECC.EccKey,
             initiator_public_unhardened_key_share: ECC.EccKey,
-    ) -> (TwoPartySchnorrSigner, TwoPartySchnorrResponderSigningSession):
+    ) -> tuple[TwoPartySchnorrSigner, TwoPartySchnorrResponderSigningSession]:
 
         responding_signer = TwoPartySchnorrSigner.for_responding_party(
             self.context,
@@ -614,7 +614,7 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
             self,
             initiator_unhardened_key_share: ECC.EccKey,
             responder_public_unhardened_key_share: ECC.EccKey
-    ) -> (TwoPartySchnorrSigner, TwoPartySchnorrInitiatorSigningSession):
+    ) -> tuple[TwoPartySchnorrSigner, TwoPartySchnorrInitiatorSigningSession]:
         initiating_signer = TwoPartySchnorrSigner.for_initiating_party(
             self.context,
             initiator_unhardened_key_share,

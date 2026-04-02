@@ -621,7 +621,7 @@ class TwoPartySchnorrKeyShare:
             party_id: PartyId,
             private_unhardened_key_share: ECC.EccKey,
             counterparty_public_unhardened_key_share: ECC.EccKey
-    ) -> (ECC.EccKey, ECC.EccKey):  # private ECC key-share, counterparty's ECC public key-share
+    ) -> tuple[ECC.EccKey, ECC.EccKey]:  # private ECC key-share, counterparty's ECC public key-share
         """
         Constructs a hardened ECC Schnorr public/private key-share pair and the counterparty's hardened ECC Schnorr
         public key-share, given the caller's unhardened ECC private key-share pair and the counterparty's unhardened
