@@ -344,6 +344,9 @@ class SchnorrSignature:
         self.public_nonce = nonce_point
         self.signature = signature
 
+    # TODO: Parse any (message) domain separator tag, if present in the encoded signature's context, ensuring it's
+    #   configured in the "rehydrated" `SchnorrContext` (i.e., otherwise signature verification will fail for otherwise
+    #   valid signatures, if a domain separator was specified).
     @classmethod
     def from_string_encoding(
             cls,
@@ -392,6 +395,9 @@ class SchnorrSignature:
 
         return SchnorrSignature(context, public_nonce, signature)
 
+    # TODO: Include any configured (message) domain separator tag in the Schnorr signature's encoding, so that it's
+    #   loaded during decoding (i.e., otherwise signature verification will fail for otherwise valid signatures, if a
+    #   domain separator was specified).
     def encode_as_string(self) -> str:
         """
         Encodes this ECC Schnorr digital signature's (R,s) tuple, using SEC1 encoding for the random nonce ECC point (R)

@@ -1,5 +1,5 @@
 ###############################################################################
-# (c) 2023, 2024 W. Spann Systems Consulting
+# (c) 2023, 2024, 2025 & 2026 W. Spann Systems Consulting
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -48,6 +48,7 @@ from scriptless_zkp.ecc.zkp.nizk_dlog_proof import (
 from scriptless_zkp.ecc.zkp.nizk_dlog_proof_commitments import (
     DiscreteLogProofCommitmentUtils, SealedDiscreteLogProofCommitment, RevealedDiscreteLogProofCommitment
 )
+from scriptless_zkp.hashing import UniversalPrimeLengthHasher
 from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
@@ -58,29 +59,36 @@ class TwoPartySchnorrContext:
     Configuration parameters for two-party ECC Schnorr digital signatures, including ECC parameters, and message & key
     hash algorithms.
     """
-    DEFAULT_HASH_ALGO: str = hashlib.sha256().name  # Note: 256-bit hash req'd for 256-bit ECC curves.
+    # DEFAULT_HASH_ALGO: str = hashlib.sha256().name  # Note: 256-bit hash req'd for 256-bit ECC curves.
     INITIATING_PARTY: PartyId = 1
     RESPONDING_PARTY: PartyId = 2
 
+    DEFAULT_KEY_DOMAIN_SEPARATOR: str = "2-Party_ECC_Schnorr_key-hash"
+    DEFAULT_MESSAGE_DOMAIN_SEPARATOR: str = "2-Party_ECC_Schnorr_msg-hash"
+
     ecc_curve_config: WeierstrassEllipticCurveConfig
     q: int
-    key_hash_algo: str
-    key_hash_length: int
-    message_hash_algo: str
-    message_hash_length: int
+    key_hasher: UniversalPrimeLengthHasher
+    message_hasher: UniversalPrimeLengthHasher
 
     def __init__(
             self,
             ecc_curve_config: WeierstrassEllipticCurveConfig,
-            key_hash_algorithm: str = DEFAULT_HASH_ALGO,
-            message_hash_algorithm: str = DEFAULT_HASH_ALGO
+            key_domain_separation_tag: str | None = DEFAULT_KEY_DOMAIN_SEPARATOR,
+            message_domain_separation_tag: str | None = DEFAULT_MESSAGE_DOMAIN_SEPARATOR
     ):
         self.ecc_curve_config: WeierstrassEllipticCurveConfig = ecc_curve_config
         self.q: int = self.ecc_curve_config.order
-        self.key_hash_algo: str = key_hash_algorithm
-        self.key_hash_length: int = hashlib.new(self.key_hash_algo).digest_size
-        self.message_hash_algo: str = message_hash_algorithm
-        self.message_hash_length: int = hashlib.new(self.message_hash_algo).digest_size
+        self.key_hasher = UniversalPrimeLengthHasher.for_field_order(
+            self.q,
+            domain_separation_tag=key_domain_separation_tag,
+            deterministic=True  # ensure deterministic hashing for reproducibility
+        )
+        self.message_hasher = UniversalPrimeLengthHasher.for_field_order(
+            self.q,
+            domain_separation_tag=message_domain_separation_tag,
+            deterministic=True  # ensure deterministic hashing for reproducibility
+        )
 
     @property
     def curve_base_point(self) -> ECC.EccPoint:
@@ -91,6 +99,43 @@ class TwoPartySchnorrContext:
     def curve_order(self) -> int:
         """Returns the configured ECC curve group's (``<G>``) order `q`."""
         return self.ecc_curve_config.order
+
+    @property
+    def key_hash_algo(self) -> str:
+        return self.key_hasher.hash_algo
+
+    @property
+    def message_hash_algo(self) -> str:
+        return self.message_hasher.hash_algo
+
+    @property
+    def key_hash_length(self) -> int:
+        # If an eXtendable Output Function's (XOF) length wasn't specified for key-hashing (i.e., SHAKE-256 isn't
+        # configured), obtain the key hashing algorithm's output length from an instance of the configured hashlib-
+        # compatible cryptographic hash algorithm.
+        if self.key_hasher.xof_hash_length is None:
+            return hashlib.new(self.key_hash_algo).digest_size
+        # Otherwise, return the XOF's output length (i.e., the configured SHAKE-256 XOF's output length).
+        else:
+            return self.key_hasher.xof_hash_length
+    @property
+    def message_hash_length(self) -> int:
+        # If an eXtendable Output Function's (XOF) length wasn't specified for message-hashing (i.e., SHAKE-256 isn't
+        # configured), obtain the message hashing algorithm's output length from an instance of the configured hashlib-
+        # compatible cryptographic hash algorithm.
+        if self.message_hasher.xof_hash_length is None:
+            return hashlib.new(self.message_hash_algo).digest_size
+        # Otherwise, return the XOF's output length (i.e., the configured SHAKE-256 XOF's output length).
+        else:
+            return self.message_hasher.xof_hash_length
+
+    @property
+    def key_domain_separation_tag(self) -> str | None:
+        return self.key_hasher.domain_separator
+
+    @property
+    def message_domain_separation_tag(self) -> str | None:
+        return self.message_hasher.domain_separator
 
     def generate_unhardened_key_share(self) -> ECC.EccKey:
         """
@@ -106,8 +151,15 @@ class TwoPartySchnorrContext:
         <p>
         This is useful for construction of ``SchnorrSignature`` instances, which are agnostic re: whether they were
         constructed via the single-party signing algorithm or two-party signing protocol. </p>
+        <p>
+        TODO: When implementing interoperability with BIP-340 (Bitcoin standard) compatible ECC Schnorr signatures,
+          this 2-party Schnorr signature context's message domain separator tag must be set according to that
+          specification, and retained when converting to a `SchnorrContext` from this `TwoPartySchnorrContext`
+          (i.e., otherwise signature verification will fail for otherwise valid "full" signatures).
+         - However, this 2-party protocol's key-hashing domain separator tag may remain distinct. </p>
+        :return: this two-party ECC Schnorr context converted to a single-party ECC Schnorr context.
         """
-        return SchnorrContext(self.ecc_curve_config)
+        return SchnorrContext(self.ecc_curve_config, domain_separation_tag=self.message_domain_separation_tag)
 
     @staticmethod
     def encode_public_key(public_key: ECC.EccKey) -> bytes:
@@ -280,21 +332,29 @@ class TwoPartySchnorrSigner:
         # Verify the validity of the Responder-provided public nonce-share.
         self._verify_public_nonce_share(responder_public_nonce)
 
+        # Use the configured prime-length hasher for message hashing, with output/range in `Z_q` (i.e., where `q` is
+        # the configured ECC curve sub-group's (<G>) order), ensuring produced hash values are valid integer "scalars"
+        # for the configured ECC curve (i.e., may serve as valid scalar multipliers for curve points, without first
+        # requiring modular reduction to `Z_q`).
+        prime_range_hasher = self.context.message_hasher
+
         # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeBasedTruncatedHasher(
-            self.context.ecc_curve_config.order,
-            self.context.message_hash_algo
-        )
+        # prime_range_hasher = PrimeBasedTruncatedHasher(
+        #     self.context.ecc_curve_config.order,
+        #     self.context.message_hash_algo
+        # )
+
         joint_nonce: ECC.EccPoint = responder_public_nonce + signing_session.public_nonce
 
-        # Calc. hash of joint public key, joint public nonce & message, truncated to the bit-length of the ECC curve
-        # group's (<G>) order (q): ("H'(Q_AB || R_A + R_B || m)").
-        joint_hash_e: int = truncated_hasher.update(
-            self.context.encode_public_key(          # joint public key "Q_AB := P_A' + P_B'" (SEC1-encoded)
+        # Calc. hash of joint public key, joint public nonce & message, mapped to `Z_q` (i.e., where `q` is the
+        # configured ECC curve sub-group's (<G>) order, and `H_q(...)` is a prime-length hasher with output in `Z_q`):
+        #     `e := H_q(Q_AB || R_A + R_B || m)`
+        joint_hash_e: int = prime_range_hasher.update(
+            self.context.encode_public_key(          # joint public key `Q_AB := P_A' + P_B'` (SEC1-encoded)
                 self.joint_pubkey.joint_ecc_pubkey
             )
         ).update(
-            self.context.encode_ecc_point(           # joint public nonce "R := R_A + R_B" (SEC1-encoded)
+            self.context.encode_ecc_point(           # joint public nonce `R := R_A + R_B` (SEC1-encoded)
                 joint_nonce
             )
         ).update(message).intdigest()
@@ -310,7 +370,7 @@ class TwoPartySchnorrSigner:
                 "Invalid 2-party ECC Schnorr signature share received from responding party."
             )
 
-        # Calculate full 2-party signature's scalar: "(s_B + r_A + H'(Q_AB || R_A + R_B || m) * x_A') mod q"
+        # Calculate full 2-party signature's scalar: `(s_B + r_A + H'(Q_AB || R_A + R_B || m) * x_A') mod q`
         full_signature_scalar: int = (
             responder_signature_share + signing_session.private_nonce + (
                 self.key_share.private_key_scalar * joint_hash_e

@@ -274,17 +274,14 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
         # Lazily initialize hasher, to simplify invalid state detection re: digest(), intdigest() & hexdigest() methods.
         if self._hasher is None and self.xof_hash_length is None:
             self._hasher = hashlib.new(self.hash_algo)
-
-            # Initialize hasher state with hash of a domain separation tag, if one was provided.
-            if self.domain_separator:
-                self._hasher.update(self.domain_separator.encode('utf-8'))
         elif self._hasher is None and self.xof_hash_length is not None:
             self._hasher = hashlib.shake_256()
 
-            # Initialize hasher state with hash of a domain separation tag, if one was provided.
-            if self.domain_separator:
-                self._hasher.update(self.domain_separator.encode('utf-8'))
+        # Initialize hasher state with hash of a domain separation tag, if one was provided.
+        if self.domain_separator:
+            self._hasher.update(self.domain_separator.encode('utf-8'))
 
+        # Append hash of the provided message, to the hasher's state.
         self._hasher.update(message)
 
         return self

@@ -61,6 +61,19 @@ class AdaptorSchnorrContext:
         return AdaptorSchnorrTweakPair.generate(self)
 
     def as_schnorr_context(self) -> SchnorrContext:
+        """
+        Returns this Adaptor ECC Schnorr context converted to a "full" ECC Schnorr signature context.
+        <p>
+        This is useful for construction of ``SchnorrSignature`` instances for "full" (adapted) signatures, which are
+        agnostic re: whether they were constructed via adaptation of a (tweaked) adaptor pre-signature or the regular
+        ECC Schnorr signing protocol. </p>
+        <p>
+        TODO: When implementing interoperability with BIP-340 (Bitcoin standard) compatible ECC Schnorr signatures, the
+          (message) domain separator tag must be set according to that specification, and retained when converting to a
+          `SchnorrContext` from this `AdaptorSchnorrContext` (i.e., otherwise signature verification will fail for
+          otherwise valid "full" (adapted) ECC Schnorr signatures). </p>
+        :return: this Adaptor ECC Schnorr context converted to a "full" ECC Schnorr signature context.
+        """
         return SchnorrContext(self.curve_config, domain_separation_tag=self.domain_separator)
 
 
