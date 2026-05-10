@@ -12,7 +12,7 @@ import uuid
 
 from typing import Literal, Optional
 
-from scriptless_zkp import PartyId, STRING_ENCODING_FIELD_DELIMITER
+from scriptless_zkp import TwoPartyId, STRING_ENCODING_FIELD_DELIMITER
 from scriptless_zkp.commitments.hmac_commitments import (
     KeyedHashCommitment, KeyedHashCommitmentUtils, RevealedKeyedHashCommitment
 )
@@ -24,7 +24,7 @@ from scriptless_zkp.ecc.zkp.nizk_dlog_proof import (
 
 class SealedDiscreteLogProofCommitment:
     session_id: uuid.UUID    # globally-unique ID for a protocol session
-    party_id: PartyId  # proving/committing party's ID (i.e., either #1: initiator or #2: responder)
+    party_id: TwoPartyId  # proving/committing party's ID (i.e., either #1: initiator or #2: responder)
     commitment: KeyedHashCommitment
 
     def __init__(
@@ -40,7 +40,7 @@ class SealedDiscreteLogProofCommitment:
     @classmethod
     def for_dlog_proof(
             cls,
-            party_id: PartyId,
+            party_id: TwoPartyId,
             dlog_proof: NIZKDiscreteLogProof,
             hash_algorithm: str = KeyedHashCommitmentUtils.DEFAULT_HASH_ALGORITHM
     ) -> tuple[SealedDiscreteLogProofCommitment, bytearray]:
@@ -91,7 +91,7 @@ class SealedDiscreteLogProofCommitment:
             ) from ve
 
         try:
-            party_id: PartyId = cls._validate_party_id(
+            party_id: TwoPartyId = cls._validate_party_id(
                 int(sealed_commitment_fields[1])
             )
         except ValueError as ve:
@@ -134,7 +134,7 @@ class SealedDiscreteLogProofCommitment:
         )
 
     @classmethod
-    def _validate_party_id(cls, party_id: int) -> PartyId:
+    def _validate_party_id(cls, party_id: int) -> TwoPartyId:
         match party_id:
             case 1: return 1
             case 2: return 2
@@ -146,7 +146,7 @@ class SealedDiscreteLogProofCommitment:
 
 class RevealedDiscreteLogProofCommitment:
     session_id: uuid.UUID    # globally-unique ID for a protocol session
-    party_id: PartyId        # prover/committer party's ID (i.e., either #1: initiator or #2: responder)
+    party_id: TwoPartyId        # prover/committer party's ID (i.e., either #1: initiator or #2: responder)
     committed_dlog_proof: NIZKDiscreteLogProof
     commitment_verification_key: bytearray
     hash_algo: str
@@ -159,7 +159,7 @@ class RevealedDiscreteLogProofCommitment:
             commitment_verification_key: bytearray,
             commitment_hash_algorithm: str
     ):
-        self.party_id: PartyId = self._validate_party_id(party_id)
+        self.party_id: TwoPartyId = self._validate_party_id(party_id)
         self.session_id = session_id
         self.committed_dlog_proof = discrete_log_proof
         self.commitment_verification_key = commitment_verification_key
@@ -212,7 +212,7 @@ class RevealedDiscreteLogProofCommitment:
                 f"Invalid party ID found in string encoding of {cls.__name__} -- caused by: {ve}"
             ) from ve  # include integer parsing exception cause
         else:
-            party_id: PartyId = cls._validate_party_id(party_id)
+            party_id: TwoPartyId = cls._validate_party_id(party_id)
 
         # Parse the embedded string-encoded NIZK proof of knowledge of discrete logarithm.
         dlog_proof: NIZKDiscreteLogProof = NIZKDiscreteLogProof.from_string_encoding(
@@ -257,7 +257,7 @@ class RevealedDiscreteLogProofCommitment:
         ).verify(keyed_hash_commitment.commitment)
 
     @classmethod
-    def _validate_party_id(cls, party_id: int) -> PartyId:
+    def _validate_party_id(cls, party_id: int) -> TwoPartyId:
         match party_id:
             case 1: return 1
             case 2: return 2

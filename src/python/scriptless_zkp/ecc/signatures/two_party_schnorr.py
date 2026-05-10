@@ -35,7 +35,7 @@ import attrs
 
 from Cryptodome.PublicKey import ECC
 
-from scriptless_zkp import PartyId
+from scriptless_zkp import TwoPartyId
 from scriptless_zkp.ecc.exceptions import (
     InvalidECCPublicKeyException, IncorrectECCCurveException, IncorrectECCSchnorrSignatureCurveException,
     InvalidECCPointException
@@ -49,22 +49,19 @@ from scriptless_zkp.ecc.zkp.nizk_dlog_proof_commitments import (
     DiscreteLogProofCommitmentUtils, SealedDiscreteLogProofCommitment, RevealedDiscreteLogProofCommitment
 )
 from scriptless_zkp.hashing import UniversalPrimeLengthHasher
-from scriptless_zkp.hashing import PrimeBasedTruncatedHasher
 
 
-# TODO: Add support for specifying a domain separator for the 2-party Schnorr signature's hash function, and using the
-#   prime-length universal hasher instead of the truncated bit-length hasher.
 class TwoPartySchnorrContext:
     """
     Configuration parameters for two-party ECC Schnorr digital signatures, including ECC parameters, and message & key
     hash algorithms.
     """
     # DEFAULT_HASH_ALGO: str = hashlib.sha256().name  # Note: 256-bit hash req'd for 256-bit ECC curves.
-    INITIATING_PARTY: PartyId = 1
-    RESPONDING_PARTY: PartyId = 2
+    INITIATING_PARTY: TwoPartyId = 1
+    RESPONDING_PARTY: TwoPartyId = 2
 
     DEFAULT_KEY_DOMAIN_SEPARATOR: str = "2-Party_ECC_Schnorr_key-hash"
-    DEFAULT_MESSAGE_DOMAIN_SEPARATOR: str = "2-Party_ECC_Schnorr_msg-hash"
+    # DEFAULT_MESSAGE_DOMAIN_SEPARATOR: str = "2-Party_ECC_Schnorr_msg-hash"
 
     ecc_curve_config: WeierstrassEllipticCurveConfig
     q: int
@@ -75,15 +72,26 @@ class TwoPartySchnorrContext:
             self,
             ecc_curve_config: WeierstrassEllipticCurveConfig,
             key_domain_separation_tag: str | None = DEFAULT_KEY_DOMAIN_SEPARATOR,
-            message_domain_separation_tag: str | None = DEFAULT_MESSAGE_DOMAIN_SEPARATOR
+            message_domain_separation_tag: str | None = SchnorrContext.DEFAULT_DOMAIN_SEPARATOR  # TODO: Troubleshoot why using the single-party Schnorr signature's domain separator is not solving a joint signature verification failure.
+            # message_domain_separation_tag: str | None = DEFAULT_MESSAGE_DOMAIN_SEPARATOR
     ):
         self.ecc_curve_config: WeierstrassEllipticCurveConfig = ecc_curve_config
         self.q: int = self.ecc_curve_config.order
+
+        # Configure a prime-length hasher for key hashing, with output/range in `Z_q` (i.e., where `q` is the configured
+        # ECC curve sub-group's (<G>) order), ensuring produced hash values are valid integer "scalars" for the
+        # configured ECC curve (i.e., may serve as valid scalar multipliers for curve points), without first requiring
+        # modular reduction to `Z_q`.
         self.key_hasher = UniversalPrimeLengthHasher.for_field_order(
             self.q,
             domain_separation_tag=key_domain_separation_tag,
             deterministic=True  # ensure deterministic hashing for reproducibility
         )
+
+        # Configure a prime-length hasher for message hashing, with output/range in `Z_q` (i.e., where `q` is
+        # the configured ECC curve sub-group's (<G>) order), ensuring produced hash values are valid integer "scalars"
+        # for the configured ECC curve (i.e., may serve as valid scalar multipliers for curve points), without first
+        # requiring modular reduction to `Z_q`.
         self.message_hasher = UniversalPrimeLengthHasher.for_field_order(
             self.q,
             domain_separation_tag=message_domain_separation_tag,
@@ -189,14 +197,14 @@ class TwoPartySchnorrContext:
 class TwoPartySchnorrSigner:
     context: TwoPartySchnorrContext
     session_id: uuid.UUID               # globally-unique ID for a protocol session
-    party_id: PartyId                   # party's ID (i.e., either #1: initiator or #2: responder)
+    party_id: TwoPartyId                   # party's ID (i.e., either #1: initiator or #2: responder)
     key_share: TwoPartySchnorrKeyShare  # hardened 2-party ECC Schnorr key-share (incl. counterparty's public key-share)
     joint_pubkey: JointSchnorrPublicKey
 
     def __init__(
             self,
             schnorr_context: TwoPartySchnorrContext,
-            party_id: PartyId,
+            party_id: TwoPartyId,
             hardened_key_share: TwoPartySchnorrKeyShare,
             joint_public_key: JointSchnorrPublicKey,
             session_id: Optional[uuid.UUID] = None
@@ -211,7 +219,7 @@ class TwoPartySchnorrSigner:
     def from_existing_key_share(
             cls,
             schnorr_context: TwoPartySchnorrContext,
-            party_id: PartyId,
+            party_id: TwoPartyId,
             hardened_key_share: TwoPartySchnorrKeyShare,
             session_id: Optional[uuid.UUID] = None
     ) -> TwoPartySchnorrSigner:
@@ -332,24 +340,12 @@ class TwoPartySchnorrSigner:
         # Verify the validity of the Responder-provided public nonce-share.
         self._verify_public_nonce_share(responder_public_nonce)
 
-        # Use the configured prime-length hasher for message hashing, with output/range in `Z_q` (i.e., where `q` is
-        # the configured ECC curve sub-group's (<G>) order), ensuring produced hash values are valid integer "scalars"
-        # for the configured ECC curve (i.e., may serve as valid scalar multipliers for curve points, without first
-        # requiring modular reduction to `Z_q`).
-        prime_range_hasher = self.context.message_hasher
-
-        # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        # prime_range_hasher = PrimeBasedTruncatedHasher(
-        #     self.context.ecc_curve_config.order,
-        #     self.context.message_hash_algo
-        # )
-
         joint_nonce: ECC.EccPoint = responder_public_nonce + signing_session.public_nonce
 
         # Calc. hash of joint public key, joint public nonce & message, mapped to `Z_q` (i.e., where `q` is the
         # configured ECC curve sub-group's (<G>) order, and `H_q(...)` is a prime-length hasher with output in `Z_q`):
         #     `e := H_q(Q_AB || R_A + R_B || m)`
-        joint_hash_e: int = prime_range_hasher.update(
+        joint_hash_e: int = self.context.message_hasher.update(
             self.context.encode_public_key(          # joint public key `Q_AB := P_A' + P_B'` (SEC1-encoded)
                 self.joint_pubkey.joint_ecc_pubkey
             )
@@ -452,18 +448,12 @@ class TwoPartySchnorrSigner:
         # Verify the validity of the Initiator-provided public nonce-share.
         self._verify_public_nonce_share(initiator_public_nonce)
 
-        # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeBasedTruncatedHasher(
-            self.context.ecc_curve_config.order,
-            self.context.message_hash_algo
-        )
-
         # Calculate the 2-party signing joint nonce ECC point ("R := R_A + R_B").
         joint_nonce: ECC.EccPoint = initiator_public_nonce + signing_session.public_nonce
 
         # Calc. hash of joint public key, joint public nonce & message, truncated to the bit-length of the ECC curve
         # group's (<G>) order (q): ("H'(Q_AB || R_A + R_B || m)").
-        joint_hash_e: int = truncated_hasher.update(
+        joint_hash_e: int = self.context.message_hasher.update(
             self.context.encode_public_key(          # joint public key "Q_AB := P_A' + P_B'" (SEC1-encoded)
                 self.joint_pubkey.joint_ecc_pubkey
             )
@@ -550,7 +540,7 @@ class TwoPartySchnorrSigner:
 class TwoPartySchnorrInitiatorSigningSession:
     context: TwoPartySchnorrContext
     session_id: uuid.UUID
-    party_id: PartyId
+    party_id: TwoPartyId
     nonce_share: ECC.EccKey
     nonce_dlog_proof: NIZKDiscreteLogProof
     counterparty_nonce_proof_commitment: Optional[SealedDiscreteLogProofCommitment] = None
@@ -582,7 +572,7 @@ class TwoPartySchnorrInitiatorSigningSession:
 class TwoPartySchnorrResponderSigningSession:
     context: TwoPartySchnorrContext
     session_id: uuid.UUID
-    party_id: PartyId
+    party_id: TwoPartyId
     nonce_share: ECC.EccKey
     nonce_dlog_proof: NIZKDiscreteLogProof
     nonce_dlog_proof_commitment: SealedDiscreteLogProofCommitment
@@ -641,7 +631,7 @@ class TwoPartySchnorrKeyShare:
     def from_unhardened_key_shares(
             cls,
             context: TwoPartySchnorrContext,
-            party_id: PartyId,
+            party_id: TwoPartyId,
             private_unhardened_key_share: ECC.EccKey,
             counterparty_public_unhardened_key_share: ECC.EccKey
     ) -> TwoPartySchnorrKeyShare:
@@ -678,7 +668,7 @@ class TwoPartySchnorrKeyShare:
     def _construct_hardened_key_shares(
             cls,
             context: TwoPartySchnorrContext,
-            party_id: PartyId,
+            party_id: TwoPartyId,
             private_unhardened_key_share: ECC.EccKey,
             counterparty_public_unhardened_key_share: ECC.EccKey
     ) -> tuple[ECC.EccKey, ECC.EccKey]:  # private ECC key-share, counterparty's ECC public key-share
@@ -729,12 +719,9 @@ class TwoPartySchnorrKeyShare:
                     f"Invalid party ID provided constructing a {cls.__name__}: {invalid}"
                 )
 
-        # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeBasedTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
-
         # Calculate outer hash of unhardened public keys: "h := H'(H(P1 || P2) || P1)" or "h := H'(H(P1 || P2) || P2)",
         # depending on whether Party #1 (initiator) or Party #2 (responder).
-        outer_hash_int: int = truncated_hasher.update(
+        outer_hash_int: int = context.key_hasher.update(
             unhardened_pubkeys_inner_hash  # H(P1 || P2)
         ).update(
             context.encode_public_key(
@@ -782,12 +769,9 @@ class TwoPartySchnorrKeyShare:
             unhardened_pubkeys_inner_hash: bytes,
             counterparty_public_unhardened_key_share: ECC.EccKey
     ) -> ECC.EccKey:
-        # Construct a bit-length LSB(s)-truncated hasher w/ same bit-length as the ECC curve group's (<G>) order (q).
-        truncated_hasher = PrimeBasedTruncatedHasher(context.ecc_curve_config.order, context.key_hash_algo)
-
         # Calculate outer hash of unhardened public keys: "h := H'(H(P1 || P2) || P1)" or "h := H'(H(P1 || P2) || P2)",
         # depending on whether Party #1 (initiator) or Party #2 (responder).
-        outer_hash_int: int = truncated_hasher.update(
+        outer_hash_int: int = context.key_hasher.update(
             unhardened_pubkeys_inner_hash  # H(P1 || P2)
         ).update(
             context.encode_public_key(
@@ -944,10 +928,10 @@ class JointSchnorrPublicKey:
         # Encode the signature's nonce point, using SEC1 encoding.
         signature_nonce_point_bytes: bytes = self.context.encode_ecc_point(schnorr_signature.public_nonce)
 
-        # Calculate the truncated hash "e := H'(Q || R || m)" of the joint public key, the signature's public nonce
-        # point & the message associated with the two-party Schnorr signature (truncated to the ECC curve's bit-length).
-        truncated_hasher = PrimeBasedTruncatedHasher(self.context.ecc_curve_config.order, self.context.message_hash_algo)
-        pubkey_nonce_message_hash: int = truncated_hasher.hash_to_int(
+        # Calculate the prime-length (universal) hash "e := H_q(Q || R || m)" of the joint public key, the signature's
+        # public nonce point & the message associated with the two-party Schnorr signature (in `Z_q`, where `q` is the
+        # order of the configured ECC curve's sub-group `<G>`).
+        pubkey_nonce_message_hash: int = self.context.message_hasher.hash_to_int(
             joint_pubkey_bytes + signature_nonce_point_bytes + message  # concatenate bytes ("Q || R || m")
         )
 

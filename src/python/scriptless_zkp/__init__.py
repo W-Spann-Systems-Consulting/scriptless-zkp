@@ -1,5 +1,5 @@
 ###############################################################################
-# (c) 2024 W. Spann Systems Consulting
+# (c) 2024, 2025 & 2026 W. Spann Systems Consulting
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -16,7 +16,7 @@
 
 from typing import Literal
 
-type PartyId = Literal[1, 2]
+type TwoPartyId = Literal[1, 2]
 """Alias to the party ID literal type, which must be either 1 (initiator) or 2 (responder)."""
 
 STRING_ENCODING_FIELD_DELIMITER: str = ':'

@@ -156,11 +156,14 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
         perspective of both the protocol's initiating and responding parties, which also verifies the joint public
         keys calculated by each party are equal.
         """
+        # Initiator (Step #1)
         initiator_unhardened_key_share: ECC.EccKey = self.context.generate_unhardened_key_share()
+
+        # Responder (Step #1)
         responder_unhardened_key_share: ECC.EccKey = self.context.generate_unhardened_key_share()
 
-        # Calculate hardened key-share pair & counterparty's hardened public key-share, from unhardened key-share pair
-        # and counterparty's unhardened public key-share.
+        # Initiator (Step #2): Calculate hardened key-share pair & counterparty's hardened public key-share, from
+        # Initiator's unhardened key-share pair and counterparty's (Responder's) unhardened public key-share.
         initiator_hardened_key_share = TwoPartySchnorrKeyShare.from_unhardened_key_shares(
             self.context,
             TwoPartySchnorrContext.INITIATING_PARTY,
@@ -168,8 +171,8 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
             responder_unhardened_key_share.public_key()
         )
 
-        # Calculate hardened key-share pair & counterparty's hardened public key-share, from unhardened key-share pair
-        # and counterparty's unhardened public key-share.
+        # Responder (Step #2): Calculate hardened key-share pair & counterparty's hardened public key-share, from
+        # Responder's unhardened key-share pair and counterparty's (Initiator's) unhardened public key-share.
         responder_hardened_key_share = TwoPartySchnorrKeyShare.from_unhardened_key_shares(
             self.context,
             TwoPartySchnorrContext.RESPONDING_PARTY,
@@ -178,17 +181,19 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
         )
 
         # Verify the Initiator's calculated public key-share for the Responder equals that calculated by the Responder.
+        # (Note: Not a protocol step.)
         self.assertEqual(
             initiator_hardened_key_share.counterparty_pubkey_point,  # Initiator-calc. public key-share for Responder
             responder_hardened_key_share.public_key_point            # Responder's public key-share
         )
         # Verify the Responder's calculated public key-share for the Initiator equals that calculated by the Initiator.
+        # (Note: Not a protocol step.)
         self.assertEqual(
             responder_hardened_key_share.counterparty_pubkey_point,  # Responder-calc. public key-share for Initiator
             initiator_hardened_key_share.public_key_point            # Initiator's public key-share
         )
 
-        # Calculate joint public key as the collaborative key-generation protocol Initiator.
+        # Initiator (Step #3): Calculate joint public key, as the collaborative key-generation protocol Initiator.
         initiator_joint_key: ECC.EccKey = JointSchnorrPublicKey.from_hardened_key_shares(
             self.context,
             initiator_hardened_key_share.private_ecc_keypair,
@@ -198,7 +203,7 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
         self.assertFalse(initiator_joint_key.has_private())
         self.assertFalse(initiator_joint_key.pointQ.is_point_at_infinity())
 
-        # Calculate joint public key as the collaborative key-generation protocol Responder.
+        # Responder (Step #3): Calculate joint public key, as the collaborative key-generation protocol Responder.
         responder_joint_key: ECC.EccKey = JointSchnorrPublicKey.from_hardened_key_shares(
             self.context,
             responder_hardened_key_share.private_ecc_keypair,
@@ -209,6 +214,7 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
         self.assertFalse(responder_joint_key.pointQ.is_point_at_infinity())
 
         # Verify the joint public key calculated by the Initiator is equal to that calculated by the Responder.
+        # (Note: Not a protocol step.)
         self.assertEqual(initiator_joint_key.pointQ, responder_joint_key.pointQ)
 
     def test_two_party_Schnorr_initiating_signer_init(self):
@@ -341,13 +347,16 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
         )
         responder_pub_keyshare: ECC.EccKey = _responding_signer.key_share.private_ecc_keypair.public_key()
         # DEBUG:
-        print(f"Received Responder public key-share (P_B'): {responder_pub_keyshare!s}")
+        print(f"(Initiator): Received Responder public key-share (P_B'): {responder_pub_keyshare!s}")
 
         # Protocol: Simulate receipt of string-encoded keyed-hash commitment to responder's public nonce-share & ZKPoK
         #   of dlog (re: their private nonce-share).
         encoded_responder_commitment: str = _responder_signing_session.nonce_dlog_proof_commitment.encode_as_string()
         # DEBUG
-        print(f"Received Responder commitment to nonce-share & ZKPoK proof (encoded): {encoded_responder_commitment}")
+        print(
+            f"(Initiator): Received Responder commitment to nonce-share & ZKPoK proof (encoded):"
+            f" {encoded_responder_commitment}"
+        )
         # Decode string-encoded keyed-hash commitment from responder.
         responder_commitment = SealedDiscreteLogProofCommitment.from_string_encoding(encoded_responder_commitment)
         self.assertIsInstance(responder_commitment, SealedDiscreteLogProofCommitment)
@@ -369,7 +378,7 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
             _responder_signing_session.proof_commitment_verification_key
         ).encode_as_string()
         # DEBUG
-        print(f"Responder revealed commitment (encoded): {encoded_revealed_responder_commitment}")
+        print(f"(Initiator): Responder revealed commitment (encoded): {encoded_revealed_responder_commitment}")
         # Decode string-encoded revealed ZKPoK commitment received from Responder.
         revealed_responder_commitment = RevealedDiscreteLogProofCommitment.from_string_encoding(
             encoded_revealed_responder_commitment
@@ -405,7 +414,7 @@ class TwoPartyECCSchnorrTests(unittest.TestCase):
             self.encoded_test_message
         ).signature_share
         # DEBUG
-        print(f"Received Responder signature-share (int): {responder_signature_share}")
+        print(f"(Initiator): Received Responder signature-share (int): {responder_signature_share}")
 
         # Calculate 2-party ECC Schnorr (full) signature, incl. verification of the responder's signature-share.
         joint_schnorr_sig: SchnorrSignature = initiating_signer.calc_full_signature(
