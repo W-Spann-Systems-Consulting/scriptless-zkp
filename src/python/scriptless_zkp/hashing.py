@@ -201,7 +201,7 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
         hash_algo: str = cls.DEFAULT_HASH_ALGO
 
         match field_order_bit_length:
-            case bits if bits <= 256:                    # e.g., NIST P-256 elliptic curve
+            case bits if bits <= 256:                    # e.g., NIST P-256 & secp256k1 (255-bit) elliptic curves
                 if larger_prime_p is None:
                     # Generate a 384-bit prime (1.5 x field order) or use a constant prime for deterministic hashing.
                     larger_prime_p: int = cls.LARGER_PRIME_384_BIT if deterministic else number.getPrime(384)
@@ -271,23 +271,29 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
         return self._hasher is None
 
     def update(self, message: bytes) -> UniversalPrimeLengthHasher:
-        # Lazily initialize hasher, to simplify invalid state detection re: digest(), intdigest() & hexdigest() methods.
-        if self._hasher is None and self.xof_hash_length is None:
-            self._hasher = hashlib.new(self.hash_algo)
-        elif self._hasher is None and self.xof_hash_length is not None:
-            self._hasher = hashlib.shake_256()
+        if self.is_reset():
+            # Lazily initialize hasher, to simplify invalid state detection re: digest(), intdigest() & hexdigest() methods.
+            if self.xof_hash_length is None:
+                self._hasher = hashlib.new(self.hash_algo)
+            elif self.xof_hash_length is not None:
+                self._hasher = hashlib.shake_256()
+            else:
+                # Note: This case should never occur.
+                raise ValueError(f"Invalid state for this universal prime-length hasher.")
 
-        # Initialize hasher state with hash of a domain separation tag, if one was provided.
-        if self.domain_separator:
-            self._hasher.update(self.domain_separator.encode('utf-8'))
+            # Initialize hasher state with hash of a domain separation tag, if one was provided.
+            if self.domain_separator:
+                # noinspection PyUnresolvedReferences
+                self._hasher.update(self.domain_separator.encode('utf-8'))
 
         # Append hash of the provided message, to the hasher's state.
+        # noinspection PyUnresolvedReferences
         self._hasher.update(message)
 
         return self
 
     def intdigest(self) -> int:
-        if self._hasher is None:
+        if self.is_reset():
             raise InvalidHasherStateException(
                 f"Unable to produce {type(self).__name__} digest -- update(bytes) must be called at least once prior "
                 f"to calling digest()."
@@ -298,7 +304,8 @@ class UniversalPrimeLengthHasher(ReducedRangeHasher):
         else:
             full_hash_bytes: bytes = self._hasher.digest()
 
-        self._hasher = None  # Reset hasher state after digesting.
+        # Reset hasher state after digesting (i.e., enabling safe reuse for constructing a new hash).
+        self.reset()
 
         return UniversalPrimeLengthHasher._carter_wegman_hash(full_hash_bytes, self.q, self.p, self.deterministic)
 
@@ -482,19 +489,21 @@ class PrimeBasedTruncatedHasher(ReducedRangeHasher):
 
     def update(self, message: bytes) -> PrimeBasedTruncatedHasher:
         # Lazily initialize hasher, to simplify invalid state detection re: digest(), intdigest() & hexdigest() methods.
-        if self._hasher is None:
+        if self.is_reset():
             self._hasher = hashlib.new(self.hash_algo)
 
             # Initialize hasher state with hash of a domain separation tag, if one was provided.
             if self.domain_separator:
+                # noinspection PyUnresolvedReferences
                 self._hasher.update(self.domain_separator.encode('utf-8'))
 
+        # noinspection PyUnresolvedReferences
         self._hasher.update(message)
 
         return self
 
     def intdigest(self) -> int:
-        if self._hasher is None:
+        if self.is_reset():
             raise InvalidHasherStateException(
                 f"Unable to produce {type(self).__name__} integer digest -- update(bytes) must be called at least once "
                 f"prior to calling intdigest()."
@@ -514,7 +523,7 @@ class PrimeBasedTruncatedHasher(ReducedRangeHasher):
             self._hasher = None  # Reset hasher state after digesting.
 
     def digest(self) -> bytes:
-        if self._hasher is None:
+        if self.is_reset():
             raise InvalidHasherStateException(
                 f"Unable to produce {type(self).__name__} digest -- update(bytes) must be called at least once prior "
                 f"to calling digest()."
@@ -539,10 +548,10 @@ class PrimeBasedTruncatedHasher(ReducedRangeHasher):
 
     def hash_to_int(self, message: bytes) -> int:
         """
-        Produces a cryptographic hash of the given message, which has been truncated to the bit-length (`N`) of a
-        configured prime, by keeping the most-significant `N` bits via a right-shift operation, returning the truncated
+        Produces a cryptographic hash of the given message, where the hash has been truncated to the bit-length (`N`)
+        of a configured prime (i.e., if the prime's bit-length is less than that of the configured cryptographic hash
+        algorithm), by keeping the most-significant `N` bits via a right-shift operation, returning the truncated
         hash as an integer.
-
         :param message: a message to be hashed.
         :return: a truncated cryptographic hash with the bit-length of a configured prime, returned as an integer.
         """
@@ -557,8 +566,9 @@ class PrimeBasedTruncatedHasher(ReducedRangeHasher):
 
     def hash(self, message: bytes) -> bytes:
         """
-        Produces a cryptographic hash of the given message, which has been truncated to the bit-length (`N`) of a
-        configured prime, by keeping the most-significant `N` bits via a right-shift operation.
+        Produces a cryptographic hash of the given message, where the hash has been truncated to the bit-length (`N`)
+        of a configured prime (i.e., if the prime's bit-length is less than that of the configured cryptographic hash
+        algorithm), by keeping the most-significant `N` bits via a right-shift operation.
         :param message: a message to be hashed.
         :return: a truncated cryptographic hash with the bit-length of a configured prime.
         """
