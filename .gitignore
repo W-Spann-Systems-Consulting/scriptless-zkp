@@ -242,5 +242,3 @@ fabric.properties
 
 .DS_Store
 /test/test-results/
-
-.idea/copilot.data.migration.agent.xml
