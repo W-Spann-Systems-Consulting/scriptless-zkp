@@ -88,7 +88,12 @@ class RevealedPolynomialPedersenCommitment:
 
     @property
     def coefficients(self) -> list[int]:
-        return self.committed_polynomial.coeffs.tolist()
+        """
+        Returns the coefficients of the committed polynomial in ascending order (i.e., from the constant term to the
+        highest-degree term). The coefficients are returned as a list of integers in `Z_p`, where `p` is the field
+        characteristic.
+        """
+        return self.committed_polynomial.coeffs[::-1].tolist()
 
     @property
     def degree(self) -> int:
@@ -247,8 +252,12 @@ class PolynomialPedersenEvaluationProof:
 
 class PolynomialPedersenContext:
     def __init__(self, field: type[FieldArray], pedersen_context: PedersenCommitmentContext):
-        if not galois.is_prime(field.characteristic):
-            raise ValueError("Field must be a field with prime characteristic (e.g., F_p or F_p^m, where p is prime).")
+        q: int = int(self.curve_config.order)
+
+        if field.degree != 1 or field.order != q:
+            raise ValueError(
+                "Polynomial coefficients must lie in GF(q), where q is the elliptic-curve subgroup order."
+            )
 
         self.field = field
         self.pedersen_context = pedersen_context
